@@ -58,7 +58,7 @@ public class Distance {
 
 #### 3.自定义数据类型
 
-​	在map阶段进行距离计算后，需要把得到的信息传输到reducer，用自带的数据类型作为key/value较难实现，因此我自定义了一个数据类型IdDistance，用以保存测试样本的id、与其比较的训练样本的id、两者间的距离。为了后续shuffle过程中排序顺利，自定义该数据类型的compareTo方法使得优先比较测试样本id，在测试样本id相同的情况下再比较距离。这样的处理使得combine/reduce阶段接收到的前k个数据就是前k小的k个数据。
+​	在map阶段进行距离计算后，需要把得到的信息传输到reducer，用自带的数据类型作为key/value较难实现，因此我自定义了一个数据类型IdDistance，用以保存测试样本的id、与其比较的训练样本的id、两者间的距离。为了后续shuffle过程中排序顺利，自定义该数据类型的compareTo方法使得优先比较测试样本id，在测试样本id相同的情况下再比较距离。这样的处理使得combine/reduce阶段接收到的前k个数据就是前k小的k个数据。值得注意的是，由于自定义了数据类型作为key，因此需要自定义partitioner以实现将具有相同测试样本id的数据传输到同一个reducer节点。
 
 ```java
     public static class IdDistance implements WritableComparable<IdDistance> {
@@ -104,5 +104,109 @@ public class Distance {
             }
         }
     }
+```
+
+```java
+public class IdPartitioner extends Partitioner<IdDistance, Text> {
+        @Override
+        public int getPartition(IdDistance idDistance, Text text, int i) {
+            return (idDistance.id.hashCode() & 2147483647) % i;
+        }
+    }
+```
+
+#### 4.map阶段
+
+​	首先在setup()方法中读取CacheFile（通过命令行参数传入），并将其内容按行存入ArrayList中，同时读取conf中的计算距离的方法（通过命令行参数传入）。
+
+map()方法的实现也较为简单，只需读取测试样本中的一条数据a，split提取出四个特征，并对于内存中的每一条训练样本b，都计算a的特征和b的特征间的距离，将计算得到的距离、a的id和b的id都存入自定义数据类型IdDistance的实例中，并将其作为key传出，同时将a实际对应的分类作为value传出。伪代码如下：
+
+```java
+class Mapper{
+    ArrayList trainData;
+    setup(...){
+        ...  //  读取CacheFile存入内存trainData中，同时读取其他后续所需要的信息
+    }
+    map(key, value, context){
+        testData = value.split(",");
+        testData -> testId, testCategory;
+        for(trainSample:trainData){
+            sampleData = tranData.split(",");
+            sampleData -> trainId;
+            distance = calcuDistance(testData,sampleData);
+            testId,trainId,distance -> newKey;
+            testCategory -> newValue;
+            emit(newKey, newValue);
+        }
+    }
+}
+```
+
+#### 5.Combine阶段
+
+​	combine阶段接收来自maper的数据，由于这些数据已经按照测试样本id和距离排好序，因此只需设置一个k（从命令行参数传入）用于计数，然后对于每个测试样本，只保留接收到的前k条数据即可。伪代码如下：
+
+```java
+class Combiner{
+	int k;
+    int left;  //  记录还有几条需要保留的数据
+    String curId;  // 记录当前正在处理的测试样本的id
+	setup(...){
+		...  // 从conf中读取k值并记录
+	}
+    reduce(key, values, context){
+        if key.id != curId {
+            curId = key.id;
+            left = k;
+        }
+        if left != 0 {
+            for(value:values){
+                emit(key, value);
+                left--;
+                if left == 0 
+                    break;
+            }
+        }
+    }
+}
+```
+
+#### 6.Reduce阶段
+
+​	由于combine阶段已经只保留了前k小的数据，因此reduce阶段只需要对于每个测试样本a，根据接收到的对应的k条数据，“票选”出模型给出的a的分类结果，并且与a的实际分类对比并记录，若模型结果与实际结果一致，则correctNumber++。最后根据correctNumber/totalNumber即可得出accuracy。伪代码如下：
+
+```java
+class Reducer{
+    int k;
+    int left;  //  用于记录还要读取多少条数据
+    int correctNum;  //  记录被正确分类的测试样本的数目
+    int totalNum;  //  记录测试样本总数
+    HashMap<String, Integer> hm;  //  用于保存投票结果
+    setup(...){
+        ...  //  从context中读取k值，并初始化上述变量的值
+    }
+   	reduce(key, values, context) {
+        for(value:values){
+            if left != 0{
+                hm.update;  //  hm中对应分类的票数+1
+                left--;
+            }
+            if left == 0 {  //  所有k条数据已经处理完毕，进行最终票选
+                resultCategory = getVoteResult(hm);
+                if resultCategory == trueCategory {
+                    correctNum++;
+                }
+                totalNum++;
+                hm.clear();
+                left = k;
+                emit(resultText);
+            }
+        }
+    }
+    cleanup(...){
+        ...  //  输出相关信息，如k值、计算距离方法等
+        emit(correctNum/totalNum);  //  输出accuracy
+    }
+}
 ```
 

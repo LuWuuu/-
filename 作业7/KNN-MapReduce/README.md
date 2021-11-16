@@ -222,8 +222,8 @@ class Reducer{
 
 ​	可以看到，不同的距离计算方式总体而言差异不大。值得注意的是，随着k值的增大，accuracy整体呈下降趋势。按道理而言，大多数情况下准确度应该随着k值的增大呈现先上升后下降趋势，因为k值太小则随机性过大，k值过大则考虑了过多其他分类的样本。本次作业中准确度随k值单调下降可能是由于样本因素，比如训练集和测试集都过小，在这种情况下，k=1时，即直接取距离测试样本最近的分类作为该样本的分类时，accuracy达到100%，而这在通常情况下是不大可能的。
 
-​	此外，针对鸢尾花的四个特征sepal length、sepal width、petal length和petal width，我采取了两两配对绘制可视化图像的方法，得到图像如下：
+​	此外，针对鸢尾花的四个特征sepal length、sepal width、petal length和petal width，我在测试集上采取了两两配对绘制可视化图像的方法，得到图像如下：
 
 ![image-20211116154930834](C:\Users\Jzt\AppData\Roaming\Typora\typora-user-images\image-20211116154930834.png)
 
-​	可以看到petal width这个特征在区分种类方面具有良好的作用，而sepal width则不然。
+​	可以看到petal width这个特征无论是单独作用还是和其他特征两两联合作用，在区分种类方面都具有良好的作用，而sepal width则不然。

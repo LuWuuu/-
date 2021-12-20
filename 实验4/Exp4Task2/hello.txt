@@ -1,0 +1,7 @@
+hello scala
+hello world
+hello nihao
+i am scala
+this is a spark example
+running program
+is ok
